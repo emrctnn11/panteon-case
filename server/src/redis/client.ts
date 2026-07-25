@@ -26,6 +26,9 @@ export type WriteScoreReply = [applied: number, rank: number];
 export type ReadWindowReply =
   [rank: number, start: number, entries: string[]] | null;
 
+/** Result of `releaseLock.lua`: `1` if released, `0` if the token didn't match. */
+export type ReleaseLockReply = number;
+
 declare module 'ioredis' {
   interface RedisCommander<Context> {
     writeScore(
@@ -44,6 +47,12 @@ declare module 'ioredis' {
       below: number,
       callback?: Callback<ReadWindowReply>,
     ): Result<ReadWindowReply, Context>;
+
+    releaseLock(
+      lockKey: string,
+      token: string,
+      callback?: Callback<ReleaseLockReply>,
+    ): Result<ReleaseLockReply, Context>;
   }
 }
 
@@ -65,6 +74,10 @@ export function createRedisClient(config: Config): LeaderboardRedis {
   client.defineCommand('readWindow', {
     numberOfKeys: 1,
     lua: readLua('readWindow.lua'),
+  });
+  client.defineCommand('releaseLock', {
+    numberOfKeys: 1,
+    lua: readLua('releaseLock.lua'),
   });
 
   return client;

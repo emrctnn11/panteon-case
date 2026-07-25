@@ -48,18 +48,30 @@ export async function writeScore(
 }
 
 /**
- * Top `n` entries for the week, ranked. Plain `ZREVRANGE` — no Lua needed, this
- * isn't paired with another read the way rank+window is (invariant 7 is about
- * *that* pairing, not every ranking read). `n` is caller-controlled but never
- * request-controlled beyond a bounded default (invariant 20).
+ * Ranked entries for the week over an inclusive 0-based rank range. Plain
+ * `ZREVRANGE` — no Lua needed, this isn't paired with another read the way
+ * rank+window is (invariant 7 is about *that* pairing, not every ranking
+ * read). README §1: offset is free in a sorted set, so a deep range costs the
+ * same as one starting at 0 — the caller is responsible for keeping the
+ * *size* of the range bounded (invariant 20), not the offset.
  */
+export async function getRange(
+  client: LeaderboardRedis,
+  instant: Date,
+  from: number,
+  to: number,
+): Promise<LeaderboardEntry[]> {
+  const raw = await client.zrevrange(weekKey(instant), from, to, 'WITHSCORES');
+  return toEntries(raw, from);
+}
+
+/** Top `n` entries for the week, ranked — `getRange(client, instant, 0, n - 1)`. */
 export async function getTopN(
   client: LeaderboardRedis,
   instant: Date,
   n = 100,
 ): Promise<LeaderboardEntry[]> {
-  const raw = await client.zrevrange(weekKey(instant), 0, n - 1, 'WITHSCORES');
-  return toEntries(raw, 0);
+  return getRange(client, instant, 0, n - 1);
 }
 
 /**

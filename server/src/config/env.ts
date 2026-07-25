@@ -13,6 +13,13 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   MONGODB_URI: z.string().url(),
+  JWT_SECRET: z.string().min(32),
+  /** Integer minor units of pool credited per earnings unit (README §3.1's "2%"). Config, not a magic constant. */
+  SCORE_POOL_MULTIPLIER: z.coerce.number().int().positive().default(2),
+  /** Shared secret for the EventBridge-triggered payout endpoint (no player identity involved). */
+  INTERNAL_PAYOUT_SECRET: z.string().min(32),
+  /** Reward curve exponent α (README §3.5) — config, not a constant, so it can be retuned without a deploy. */
+  PAYOUT_CURVE_ALPHA: z.coerce.number().positive().default(1),
 });
 
 export type Config = Readonly<z.infer<typeof envSchema>>;

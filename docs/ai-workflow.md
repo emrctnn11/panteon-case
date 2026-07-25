@@ -4,6 +4,20 @@ Chronological record of AI-assisted development moments. Feeds README §5.
 Newest entries on top. Dated, factual, 2–3 lines each — no embellishment.
 
 ## 2026-07-25
+`POST /internal/payout`: README calls it "secret-protected" but names no mechanism, and
+it has no player identity to reuse `@fastify/jwt` for. Flagged this as a different trust
+boundary than player auth and asked instead of picking silently. User chose a
+constant-time-compared shared-secret header (`INTERNAL_PAYOUT_SECRET`) over reusing JWT
+with a service token — matches EventBridge Scheduler's native static-header support.
+
+## 2026-07-25
+`POST /api/score`: README §2 commits to "JWT-based" auth but names no library, and the
+`players` table has no credential column — so a login flow was never designed. Flagged
+both gaps and asked instead of picking silently. User chose `@fastify/jwt` over
+`jsonwebtoken`/`jose`, and verify-only tokens (minted out-of-band, `sub` claim = playerId)
+over building a login endpoint — no auth-issuance scope was invented.
+
+## 2026-07-25
 README §4 says Mongo events are "written in batches", but CLAUDE.md invariant 15 rules out
 the obvious reading (in-memory buffer + periodic flush — module-level state, exactly what's
 banned). Flagged the conflict and asked instead of picking silently; user confirmed "batch"
