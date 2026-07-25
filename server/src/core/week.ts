@@ -10,7 +10,9 @@ import { getISOWeek, getISOWeekYear } from 'date-fns';
  * Year. See README §3.3.
  */
 
-const KEY_PREFIX = 'lb:';
+const SCOREBOARD_PREFIX = 'lb:';
+const POOL_PREFIX = 'pool:';
+const TOP_CACHE_PREFIX = 'cache:top:';
 
 /**
  * date-fns reads a `Date`'s **local** calendar fields. All week handling is UTC
@@ -31,12 +33,36 @@ function asUtcCalendarDate(instant: Date): Date {
 }
 
 /**
- * The Redis sorted-set key for the ISO week containing `instant` (UTC).
- * Format: `lb:YYYY-Www`, week zero-padded to two digits (`lb:2026-W05`).
+ * `YYYY-Www` for the ISO week containing `instant` (UTC), week zero-padded to two
+ * digits (`2026-W05`). Shared by every Redis key that scopes to a week, so the
+ * three keys below always agree on which week they mean.
  */
-export function weekKey(instant: Date): string {
+function isoWeekId(instant: Date): string {
   const local = asUtcCalendarDate(instant);
   const year = getISOWeekYear(local);
   const week = getISOWeek(local);
-  return `${KEY_PREFIX}${year}-W${String(week).padStart(2, '0')}`;
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+/**
+ * The Redis sorted-set key for the ISO week containing `instant` (UTC).
+ * Format: `lb:YYYY-Www` (`lb:2026-W05`). `core/scripts/writeScore.lua` KEYS[1].
+ */
+export function weekKey(instant: Date): string {
+  return `${SCOREBOARD_PREFIX}${isoWeekId(instant)}`;
+}
+
+/**
+ * The Redis key for the week's prize-pool counter. `core/scripts/writeScore.lua` KEYS[2].
+ */
+export function poolKey(instant: Date): string {
+  return `${POOL_PREFIX}${isoWeekId(instant)}`;
+}
+
+/**
+ * The Redis key for the cached top-100 response (README §1/§3.6 — a single
+ * string, 5s TTL, absorbing the majority of read traffic at nginx).
+ */
+export function topCacheKey(instant: Date): string {
+  return `${TOP_CACHE_PREFIX}${isoWeekId(instant)}`;
 }
