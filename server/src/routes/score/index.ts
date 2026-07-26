@@ -1,9 +1,14 @@
 import type { FastifyInstance } from 'fastify';
+import type { Db } from 'mongodb';
 
+import type { LeaderboardRedis } from '../../redis/client.js';
 import { scoreBodySchema } from './schema.js';
 import { submitScore, type ScoreServiceDeps } from './service.js';
 
-export interface ScoreRouteOptions extends ScoreServiceDeps {
+export interface ScoreRouteOptions {
+  redis: LeaderboardRedis;
+  mongoDb: Db;
+  mongoReady: () => boolean;
   poolMultiplier: number;
 }
 
@@ -21,6 +26,14 @@ export async function scoreRoutes(
   app: FastifyInstance,
   opts: ScoreRouteOptions,
 ): Promise<void> {
+  const deps: ScoreServiceDeps = {
+    redis: opts.redis,
+    mongoDb: opts.mongoDb,
+    mongoReady: opts.mongoReady,
+    logMongoError: (err) =>
+      app.log.error({ err }, 'mongo event log write failed'),
+  };
+
   app.post(
     '/api/score',
     { preHandler: [app.authenticate] },
@@ -36,7 +49,7 @@ export async function scoreRoutes(
 
       const playerId = request.user.sub;
       const result: ScoreResponse = await submitScore(
-        opts,
+        deps,
         new Date(),
         playerId,
         parsed.data.rawEarnings,

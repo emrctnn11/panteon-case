@@ -8,6 +8,7 @@ import { loadConfig } from '../src/config/env.js';
 const noopDeps = {
   redis: {},
   mongoDb: {},
+  mongoReady: () => false,
   db: {},
 } as unknown as AppDeps;
 

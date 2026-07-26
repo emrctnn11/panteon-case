@@ -135,6 +135,7 @@ function buildDeps(opts: {
       expire,
     } as unknown as AppDeps['redis'],
     mongoDb: {} as unknown as AppDeps['mongoDb'],
+    mongoReady: () => false,
     db: { insertInto, updateTable, transaction } as unknown as AppDeps['db'],
   } satisfies AppDeps;
 

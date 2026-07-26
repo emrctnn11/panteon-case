@@ -1,10 +1,11 @@
 import type { Kysely } from 'kysely';
 
-import { topCacheKey } from '../../core/week.js';
+import { topCacheKey, weekEndsAt } from '../../core/week.js';
 import { attachDisplayNames } from '../../db/players.js';
 import type { Database } from '../../db/schema.js';
 import { getCache, setCache } from '../../redis/cache.js';
 import type { LeaderboardRedis } from '../../redis/client.js';
+import { getPool } from '../../redis/pool.js';
 import {
   getRange,
   getRankAndWindow,
@@ -25,6 +26,11 @@ export interface EnrichedEntry extends LeaderboardEntry {
 
 export interface TopResult {
   entries: EnrichedEntry[];
+  /** Current week's prize pool, integer minor units (invariant 1). Shared, not
+   * personal, so it belongs on `/top` rather than `/me` (invariant 19). */
+  pool: number;
+  /** ISO instant of the next Monday 00:00 UTC rollover, for a client countdown. */
+  weekEndsAt: string;
 }
 
 export interface MeResult {
@@ -39,10 +45,11 @@ export interface CombinedResult {
 }
 
 /**
- * Shared top-N page (README §3.6). Only the exact default page
- * (`from=0, limit=TOP_DEFAULT_LIMIT`) is served from/written to the 5s Redis
- * string cache — every other page bypasses it and reads Redis live, which is
- * cheap regardless of offset (README §1).
+ * Shared `/top` page (README §3.6). Every `(from, limit)` page is served
+ * from/written to its own 5s Redis string cache — offset is free in the sorted
+ * set (README §1), and per-page caching keeps the hot first page off Postgres
+ * enrichment on every poll. Empty pages (past the end / absurd `from`) are not
+ * cached, so a spray of large `?from=` values can't accumulate cache entries.
  */
 export async function getTop(
   deps: LeaderboardServiceDeps,
@@ -50,24 +57,27 @@ export async function getTop(
   from: number,
   limit: number,
 ): Promise<TopResult> {
-  const isDefaultPage = from === 0 && limit === TOP_DEFAULT_LIMIT;
+  const cacheKey = topCacheKey(instant, from, limit);
 
-  if (isDefaultPage) {
-    const cached = await getCache(deps.redis, topCacheKey(instant));
-    if (cached !== null) {
-      return JSON.parse(cached) as TopResult;
-    }
+  const cached = await getCache(deps.redis, cacheKey);
+  if (cached !== null) {
+    return JSON.parse(cached) as TopResult;
   }
 
-  const entries = await getRange(deps.redis, instant, from, from + limit - 1);
+  const [entries, pool] = await Promise.all([
+    getRange(deps.redis, instant, from, from + limit - 1),
+    getPool(deps.redis, instant),
+  ]);
   const result: TopResult = {
     entries: await attachDisplayNames(deps.db, entries),
+    pool,
+    weekEndsAt: weekEndsAt(instant).toISOString(),
   };
 
-  if (isDefaultPage) {
+  if (entries.length > 0) {
     await setCache(
       deps.redis,
-      topCacheKey(instant),
+      cacheKey,
       JSON.stringify(result),
       TOP_CACHE_TTL_SECONDS,
     );

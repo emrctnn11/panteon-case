@@ -16,6 +16,9 @@ import { scoreRoutes } from './routes/score/index.js';
 export interface AppDeps {
   redis: LeaderboardRedis;
   mongoDb: Db;
+  /** Live Mongo readiness (see `createMongoEventStore`) — lets the score path
+   * skip the event-log write when Mongo is down instead of stalling (invariant 21). */
+  mongoReady: () => boolean;
   db: Kysely<Database>;
 }
 
@@ -43,6 +46,7 @@ export async function buildApp(
   await app.register(scoreRoutes, {
     redis: deps.redis,
     mongoDb: deps.mongoDb,
+    mongoReady: deps.mongoReady,
     poolMultiplier: config.SCORE_POOL_MULTIPLIER,
   });
   await app.register(leaderboardRoutes, {

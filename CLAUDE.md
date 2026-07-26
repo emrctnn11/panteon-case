@@ -115,6 +115,12 @@ without explicitly flagging it and getting confirmation.**
     never leak per-player data into it.
 20. **Enrichment is bounded.** Only ever look up profiles for the ~100 cached + ~6 window rows.
 
+### Mongo (secondary store)
+
+21. **Redis and Postgres are required at startup — they are the source of truth.**
+    MongoDB must never block startup or fail a request; it is a secondary
+    observation store (see README §2, "Why three data stores").
+
 ---
 
 ## Conventions

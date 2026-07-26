@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   minutesElapsedInWeek,
   previousWeekInstant,
+  weekEndsAt,
   weekId,
   weekKey,
 } from '../src/core/week.js';
@@ -71,6 +72,35 @@ describe('minutesElapsedInWeek — boundaries (testing priority #1)', () => {
   it('agrees with weekKey on which week a midnight-UTC Monday belongs to', () => {
     // Same instant used in the "does not slip" weekKey test above.
     expect(minutesElapsedInWeek(new Date('2026-07-27T00:00:00.000Z'))).toBe(0);
+  });
+});
+
+describe('weekEndsAt — countdown boundary (README §3.3)', () => {
+  it('returns the same instant regardless of when in the week it is computed', () => {
+    // ISO 2026-W30 ends at Mon 2026-07-27 00:00 UTC.
+    const expected = '2026-07-27T00:00:00.000Z';
+    expect(weekEndsAt(new Date('2026-07-20T00:00:00.000Z')).toISOString()).toBe(
+      expected,
+    );
+    expect(weekEndsAt(new Date('2026-07-23T09:30:00.000Z')).toISOString()).toBe(
+      expected,
+    );
+    expect(weekEndsAt(new Date('2026-07-26T23:59:59.999Z')).toISOString()).toBe(
+      expected,
+    );
+  });
+
+  it('rolls to the following Monday right at the current boundary', () => {
+    expect(weekEndsAt(new Date('2026-07-27T00:00:00.000Z')).toISOString()).toBe(
+      '2026-08-03T00:00:00.000Z',
+    );
+  });
+
+  it('crosses a year boundary correctly (agrees with weekKey on 2027-01-01)', () => {
+    // 2027-01-01 falls in ISO 2026-W53, which ends Mon 2027-01-04 00:00 UTC.
+    expect(weekEndsAt(new Date('2027-01-01T00:00:00.000Z')).toISOString()).toBe(
+      '2027-01-04T00:00:00.000Z',
+    );
   });
 });
 

@@ -59,6 +59,25 @@ export function minutesElapsedInWeek(instant: Date): number {
 }
 
 /**
+ * The instant of the next ISO week boundary (Monday 00:00 UTC) at or after
+ * `instant`. Surfaces a countdown to weekly rollover (README §3.3) — a fixed
+ * UTC instant is returned; the client renders it in local time.
+ */
+export function weekEndsAt(instant: Date): Date {
+  const local = asUtcCalendarDate(instant);
+  const start = startOfISOWeek(local);
+  const utcStartMs = Date.UTC(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate(),
+    start.getHours(),
+    start.getMinutes(),
+    start.getSeconds(),
+  );
+  return new Date(utcStartMs + WEEK_MS);
+}
+
+/**
  * The instant exactly one week before `instant`. Weeks in this system are
  * always exactly 604,800 seconds (UTC, no DST — README §3.3), so this
  * reliably lands in the ISO week that just closed regardless of what moment
@@ -86,9 +105,11 @@ export function poolKey(instant: Date): string {
 }
 
 /**
- * The Redis key for the cached top-100 response (README §1/§3.6 — a single
- * string, 5s TTL, absorbing the majority of read traffic at nginx).
+ * The Redis key for a cached `/top` page (README §1/§3.6 — a short-lived
+ * string, 5s TTL, absorbing the majority of read traffic at nginx). Keyed per
+ * `(from, limit)` so every browsed page is cacheable, not just the first —
+ * still shared, never per-player (invariant 19).
  */
-export function topCacheKey(instant: Date): string {
-  return `${TOP_CACHE_PREFIX}${weekId(instant)}`;
+export function topCacheKey(instant: Date, from: number, limit: number): string {
+  return `${TOP_CACHE_PREFIX}${weekId(instant)}:${from}:${limit}`;
 }

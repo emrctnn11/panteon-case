@@ -55,8 +55,15 @@ discard 5,000 rows before returning anything; latency grows linearly with depth.
 essentially the same as `ZREVRANGE 0 49`. Because deep access is no longer expensive,
 the API exposes rank-based pagination (`?from=&limit=`) and lets players browse the
 entire ladder — something the original system could not afford to offer at all.
+`limit` is an allowlist (`{20, 50, 100}`) and `from` is snapped server-side to a
+multiple of `limit`, so page requests collapse onto a bounded set of shared cache keys
+rather than letting a caller mint arbitrary ones. `from` is also capped at `TOP_MAX_FROM`
+(1,000,000) — sufficient for the demo scale (~750k seeded); in production this is raised
+to the actual player count so legitimate deep access is not cut off.
 
-**Solution (client):** the list is virtualized; only visible rows are mounted.
+**Solution (client):** the list is virtualized; only visible rows are mounted, and only
+the pages in view keep polling — pages scrolled past freeze until they return to the
+viewport (see §3.7).
 
 ### "Rewards should go out automatically at the end of the week."
 
@@ -100,6 +107,9 @@ Each store is chosen for its access pattern, not for coverage.
 MongoDB's event log doubles as a recovery source: if Redis is lost, the ladder can be
 rebuilt. Partial recovery is in fact automatic — because clients submit absolute
 totals (§3.1), each player's next submission restores their own score.
+
+A Mongo outage does not take the leaderboard down — startup and the request path do
+not depend on it (CLAUDE.md invariant 21).
 
 ---
 
@@ -329,12 +339,13 @@ If a genuine real-time requirement appears, SSE plus Redis pub/sub is the intend
 
 ## 4. Scale and measured limits
 
-The demo is seeded with **750k players**, not 10M. Seeding 10M would consume ~1.1GB in
+The demo is seeded with **750k players**, not 10M. Seeding 10M would consume ~970MB in
 Redis alone and exhaust a t3.micro, degrading the very performance the system claims —
 so the ceiling is measured and documented rather than demonstrated.
 
-- Redis sorted set cost measured at **~110 bytes per member**
-- 750k members ≈ 82MB · 2M ≈ 220MB · 10M ≈ **1.1GB**
+- Redis sorted set cost measured at **97.01 bytes per member** (`MEMORY USAGE ... SAMPLES 0`
+  on the real seeded 750k-member key, divided by `ZCARD` — not an estimate)
+- 750k members ≈ 73MB · 2M ≈ 194MB · 10M ≈ **970MB**
 - Query complexity is O(log N), so **latency is flat across this range**; only memory grows
 - At 10M weekly-active members, Redis moves to ElastiCache (`cache.t4g.medium`) and the
   application tier scales horizontally behind the load balancer — no code changes, since

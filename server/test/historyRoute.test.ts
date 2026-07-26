@@ -70,6 +70,7 @@ function buildDeps(opts: {
   const deps = {
     redis: {} as unknown as AppDeps['redis'],
     mongoDb: {} as unknown as AppDeps['mongoDb'],
+    mongoReady: () => false,
     db: { selectFrom: vi.fn(selectFrom) } as unknown as AppDeps['db'],
   } satisfies AppDeps;
 

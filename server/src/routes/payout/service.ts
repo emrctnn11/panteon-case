@@ -181,7 +181,11 @@ async function claimAndPay(
     await deps.redis.incrby(poolKey(instant), rollover);
   }
 
+  // Reclaim both of the paid-out week's live keys together: the ladder and its
+  // pool counter. `writeScore.lua` sets no expiry on either, so without this the
+  // pool key would linger indefinitely after the sorted set is gone.
   await deps.redis.expire(weekKey(previousInstant), FROZEN_WEEK_TTL_SECONDS);
+  await deps.redis.expire(poolKey(previousInstant), FROZEN_WEEK_TTL_SECONDS);
 
   return {
     status: 'completed',

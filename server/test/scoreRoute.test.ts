@@ -28,6 +28,7 @@ function buildDeps() {
     mongoDb: {
       collection: () => ({ insertMany }),
     } as unknown as AppDeps['mongoDb'],
+    mongoReady: () => true,
     // Score route doesn't touch Postgres; only its shape needs to satisfy AppDeps.
     db: {} as unknown as AppDeps['db'],
   } satisfies AppDeps;
@@ -121,6 +122,47 @@ describe('POST /api/score', () => {
       ];
       expect(event.playerId).toBe('player-1');
       expect(event.rawEarnings).toBe(100);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('still returns the write result when the Mongo event log fails (invariant 21)', async () => {
+    const { deps, insertMany } = buildDeps();
+    insertMany.mockRejectedValue(new Error('mongo down'));
+    const app = await buildApp(config, deps);
+    try {
+      const token = app.jwt.sign({ sub: 'player-1' });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/score',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { rawEarnings: 100 },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ applied: true, rank: 4 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('skips the event-log write when Mongo is not ready, still returning the write result (invariant 21)', async () => {
+    const { deps, insertMany } = buildDeps();
+    deps.mongoReady = () => false;
+    const app = await buildApp(config, deps);
+    try {
+      const token = app.jwt.sign({ sub: 'player-1' });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/score',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { rawEarnings: 100 },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ applied: true, rank: 4 });
+      expect(insertMany).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
