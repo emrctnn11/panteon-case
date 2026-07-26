@@ -43,6 +43,19 @@ export async function getWeekHistory(
     return null;
   }
 
+  return readSnapshot(deps, weekId);
+}
+
+/**
+ * Reads a known-completed week's frozen top-100 snapshot. Callers must have
+ * already established the week is `completed` — this does not re-check, so it is
+ * shared by both `getWeekHistory` (checks first) and `getLatestWeekHistory`
+ * (selects only completed weeks), without querying `payout_runs` twice.
+ */
+async function readSnapshot(
+  deps: HistoryServiceDeps,
+  weekId: string,
+): Promise<HistoryResult> {
   const rows = await deps.db
     .selectFrom('weeklySnapshots')
     .select(['rank', 'playerId', 'earningsMinor', 'amountMinor'])
@@ -51,4 +64,30 @@ export async function getWeekHistory(
     .execute();
 
   return { weekId, entries: await attachDisplayNames(deps.db, rows) };
+}
+
+/**
+ * The most recent `completed` week's frozen results — what the client's "Last
+ * week" screen shows without having to derive an ISO week key itself (that
+ * derivation is exactly the boundary bug README §3.3 warns about, so the id is
+ * resolved server-side). `week_id` is zero-padded (`YYYY-Www`), so lexical
+ * `desc` ordering is chronological. Returns `null` when no week has completed
+ * yet — an empty completed week still returns a `HistoryResult` with `[]`.
+ */
+export async function getLatestWeekHistory(
+  deps: HistoryServiceDeps,
+): Promise<HistoryResult | null> {
+  const latest = await deps.db
+    .selectFrom('payoutRuns')
+    .select('weekId')
+    .where('status', '=', 'completed')
+    .orderBy('weekId', 'desc')
+    .limit(1)
+    .executeTakeFirst();
+
+  if (!latest) {
+    return null;
+  }
+
+  return readSnapshot(deps, latest.weekId);
 }

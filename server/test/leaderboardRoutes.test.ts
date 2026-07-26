@@ -143,7 +143,12 @@ describe('GET /api/leaderboard/top', () => {
       });
       expect(res.statusCode).toBe(200);
       // ZREVRANGE gets the offset directly — never a SQL OFFSET (invariant 18).
-      expect(zrevrange).toHaveBeenCalledWith(expect.any(String), 40, 59, 'WITHSCORES');
+      expect(zrevrange).toHaveBeenCalledWith(
+        expect.any(String),
+        40,
+        59,
+        'WITHSCORES',
+      );
       const body = res.json();
       expect(body.entries).toHaveLength(20);
       expect(body.entries[0].rank).toBe(40);
@@ -164,7 +169,12 @@ describe('GET /api/leaderboard/top', () => {
         url: '/api/leaderboard/top?from=25&limit=20',
       });
       expect(res.statusCode).toBe(200);
-      expect(zrevrange).toHaveBeenCalledWith(expect.any(String), 20, 39, 'WITHSCORES');
+      expect(zrevrange).toHaveBeenCalledWith(
+        expect.any(String),
+        20,
+        39,
+        'WITHSCORES',
+      );
       expect(res.json().entries[0].rank).toBe(20);
     } finally {
       await app.close();

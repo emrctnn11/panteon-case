@@ -23,3 +23,22 @@ export interface MeResult {
   rank: number | null;
   entries: LeaderboardEntry[];
 }
+
+/**
+ * Duplicated from server/src/routes/history/service.ts. Money-scale fields are
+ * `string` (BIGINT minor units): the server keeps them as strings to avoid
+ * precision loss past 2^53, so the client receives and displays them as-is,
+ * converting to number only at the presentation boundary.
+ */
+export interface HistoryEntry {
+  rank: number;
+  playerId: string;
+  displayName: string;
+  earningsMinor: string;
+  amountMinor: string;
+}
+
+export interface HistoryResult {
+  weekId: string;
+  entries: HistoryEntry[];
+}

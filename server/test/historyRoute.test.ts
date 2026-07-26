@@ -31,19 +31,29 @@ interface FakeSnapshotRow {
  */
 function buildDeps(opts: {
   run?: FakeRun;
+  /** `week_id` returned by the `/latest` "most recent completed" lookup. */
+  latestWeekId?: string;
   snapshotRows?: FakeSnapshotRow[];
   playerRows?: { playerId: string; displayName: string }[];
 }) {
   const run = opts.run;
+  const latestWeekId = opts.latestWeekId;
   const snapshotRows = opts.snapshotRows ?? [];
   const playerRows = opts.playerRows ?? [];
 
   function selectFrom(table: string) {
     if (table === 'payoutRuns') {
+      // Two distinct chains hit `payoutRuns`: the `:weekId` route's status
+      // lookup (ends `.executeTakeFirst()` → `run`), and `/latest`'s ordered
+      // lookup (adds `.orderBy().limit()` → `{ weekId }`). One builder serves both.
       const builder = {
         select: vi.fn(() => builder),
         where: vi.fn(() => builder),
-        executeTakeFirst: vi.fn(async () => run),
+        orderBy: vi.fn(() => builder),
+        limit: vi.fn(() => builder),
+        executeTakeFirst: vi.fn(async () =>
+          latestWeekId !== undefined ? { weekId: latestWeekId } : run,
+        ),
       };
       return builder;
     }
@@ -77,12 +87,12 @@ function buildDeps(opts: {
   return { deps };
 }
 
-async function get(deps: AppDeps, weekId: string) {
+async function get(deps: AppDeps, path: string) {
   const app = await buildApp(config, deps);
   try {
     return await app.inject({
       method: 'GET',
-      url: `/api/leaderboard/history/${weekId}`,
+      url: `/api/leaderboard/history/${path}`,
     });
   } finally {
     await app.close();
@@ -169,5 +179,48 @@ describe('GET /api/leaderboard/history/:weekId', () => {
 
     const res = await get(deps, '2026-W01');
     expect(res.json().entries[0].displayName).toBe('ghost');
+  });
+});
+
+describe('GET /api/leaderboard/history/latest', () => {
+  it('404s when no week has completed yet', async () => {
+    const { deps } = buildDeps({ latestWeekId: undefined, run: undefined });
+    const res = await get(deps, 'latest');
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('resolves the latest completed week and returns its snapshot', async () => {
+    const { deps } = buildDeps({
+      latestWeekId: '2026-W30',
+      snapshotRows: [
+        { rank: 1, playerId: 'p1', earningsMinor: '500', amountMinor: '200' },
+      ],
+      playerRows: [{ playerId: 'p1', displayName: 'Alice' }],
+    });
+
+    const res = await get(deps, 'latest');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('public, max-age=60');
+    expect(res.json()).toEqual({
+      weekId: '2026-W30',
+      entries: [
+        {
+          rank: 1,
+          playerId: 'p1',
+          displayName: 'Alice',
+          earningsMinor: '500',
+          amountMinor: '200',
+        },
+      ],
+    });
+  });
+
+  it('does not collide with the parametric :weekId route', async () => {
+    // `latest` must hit the static route, not be parsed as a (malformed) weekId.
+    const { deps } = buildDeps({ latestWeekId: undefined, run: undefined });
+    const res = await get(deps, 'latest');
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: 'not_found' });
   });
 });

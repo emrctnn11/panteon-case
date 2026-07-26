@@ -5,7 +5,9 @@ import type { LeaderboardEntry } from '../api/types.ts';
 import { TOP_POLL_INTERVAL_MS } from '../config/env.ts';
 import { LEADERBOARD_PAGE_SIZE } from '../lib/constants.ts';
 
-export function topPageQueryKey(from: number): readonly [string, string, number] {
+export function topPageQueryKey(
+  from: number,
+): readonly [string, string, number] {
   return ['leaderboard', 'top', from] as const;
 }
 

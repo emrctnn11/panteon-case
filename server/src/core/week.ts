@@ -110,6 +110,10 @@ export function poolKey(instant: Date): string {
  * `(from, limit)` so every browsed page is cacheable, not just the first —
  * still shared, never per-player (invariant 19).
  */
-export function topCacheKey(instant: Date, from: number, limit: number): string {
+export function topCacheKey(
+  instant: Date,
+  from: number,
+  limit: number,
+): string {
   return `${TOP_CACHE_PREFIX}${weekId(instant)}:${from}:${limit}`;
 }

@@ -20,6 +20,16 @@ const envSchema = z.object({
   INTERNAL_PAYOUT_SECRET: z.string().min(32),
   /** Reward curve exponent α (README §3.5) — config, not a constant, so it can be retuned without a deploy. */
   PAYOUT_CURVE_ALPHA: z.coerce.number().positive().default(1),
+  /**
+   * Enables the demo-only `POST /api/dev/token` (mints a player JWT for any id
+   * so a reviewer can "view as" a seeded account and see the personal window).
+   * OFF by default and **must stay off in production** — it is an auth bypass.
+   * String enum, not `z.coerce.boolean()`, because coercion treats "false" as true.
+   */
+  DEMO_MODE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export type Config = Readonly<z.infer<typeof envSchema>>;

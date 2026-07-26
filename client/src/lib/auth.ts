@@ -42,3 +42,22 @@ function subscribe(onChange: () => void): () => void {
 export function useAuthToken(): string | null {
   return useSyncExternalStore(subscribe, getAuthToken);
 }
+
+/**
+ * Best-effort read of the `sub` (player id) from a JWT's payload, for display
+ * only — e.g. showing the demo picker which account is active. Never trusted
+ * for auth (the server verifies the signature); a malformed token yields null.
+ */
+export function getTokenSub(token: string | null): string | null {
+  if (!token) {
+    return null;
+  }
+  try {
+    const payloadSegment = token.split('.')[1] ?? '';
+    const json = atob(payloadSegment.replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json) as { sub?: string };
+    return payload.sub ?? null;
+  } catch {
+    return null;
+  }
+}

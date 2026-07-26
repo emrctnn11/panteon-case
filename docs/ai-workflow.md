@@ -3,6 +3,43 @@
 Chronological record of AI-assisted development moments. Feeds README §5.
 Newest entries on top. Dated, factual, 2–3 lines each — no embellishment.
 
+## 2026-07-26 (17)
+Manual "View as" testing surfaced two UX bugs. (1) Switching player didn't update the
+personal window until the 15s poll — root cause: `usePlayerWindow`'s query key was
+`['leaderboard','me']` with no identity, so TanStack served the previous player's cache.
+Fixed by keying on the token's `sub` (`getTokenSub`), so a switch is a new cache entry and
+refetches immediately. (2) "Jump to my rank" was `disabled` for out-of-top players (their
+row isn't in the loaded list); made it branch — scroll the list row if loaded, else
+`scrollIntoView` the personal-window panel (via a ref), which always exists in that case.
+Verified against the 750k seed: switching to rank ~400k updated the window instantly.
+
+## 2026-07-26 (16)
+Personal window wasn't demonstrable: `/me` needs a player JWT but there's no login flow
+(#5/#22), so a reviewer couldn't see the "outside top-100" window the brief asks for. Chose
+a demo-gated `POST /api/dev/token` (mints a JWT for a seeded id) + client "View as" picker
+over baking pre-signed tokens into the bundle or leaving the manual-localStorage README
+step. Flagged the trust boundary: it is an auth bypass, gated behind `DEMO_MODE`/`VITE_DEMO_MODE`
+(both default off/absent in prod), registered only when on. Verified end-to-end against the
+local 750k seed: picking Rank ~102 rendered rank-104 self + 3-above/2-below window with the
+reward-boundary hint.
+
+## 2026-07-26 (15)
+Client redesign's reward communication. Decided how far the client may express prizes:
+showed a live podium preview from `pool × {0.20,0.15,0.10}` (the brief's *fixed* podium
+%s, `PODIUM_SHARES`), but kept the rank 4–100 α-curve server-only — consistent with #7's
+curve-drift reasoning. Exact per-rank amounts are surfaced only via the "Last week" screen
+from `/history` (`amount_minor`), never estimated client-side. New reusable components
+(`Podium`, `Medal`, `StatCard`, `SegmentedTabs`) with `LeaderboardRow` extended by one
+optional `awardLabel` prop rather than a second row component.
+
+## 2026-07-26 (14)
+Added `GET /api/leaderboard/history/latest` for the client's "Last week" tab. Real fork:
+have the client compute the previous ISO week key vs. resolve it server-side. Chose
+server-side — client-side derivation is exactly the §3.3 boundary bug (`getFullYear`/local
+fields), so the client never touches ISO week math. Refactored `getWeekHistory` to share a
+`readSnapshot` helper so `/latest` doesn't query `payout_runs` twice (find-latest already
+filters `status='completed'`; re-checking status was redundant).
+
 ## 2026-07-26 (13)
 Provisioned the EventBridge weekly payout trigger (7.3) and smoke-tested the write path (7.4)
 against the live EC2. Caught that nginx only proxied `/api/` — `POST /internal/payout` fell to

@@ -3,7 +3,7 @@
 A stateless leaderboard backend + client for an idle/clicker game with ~10M registered
 players and ~2M DAU. Weekly competition, automatic prize pool, automatic payout.
 
-- **Live demo:** https://<subdomain>.duckdns.org
+- **Live demo:** https://panteoncase.duckdns.org
 - **Stack:** Node.js + TypeScript, PostgreSQL, MongoDB, Redis, React + TypeScript, AWS EC2
 
 ---
@@ -370,60 +370,153 @@ the component is MongoDB, addressed through the same driver and protocol.
 
 ## 5. AI-assisted development
 
-> **Fill this in yourself.** The scaffold below is a structure, not content. Reviewers
-> can tell the difference between a described workflow and a real one, and the job
-> description asks specifically for habits rather than tool names. Every claim here
-> should be one you can defend in conversation.
+The full, dated record is `docs/ai-workflow.md` — a running log written *as the
+work happened*, not reconstructed afterwards. Every claim below points back to an
+entry there. The short version: AI did most of the typing; the design decisions,
+and the review that caught where AI was wrong, were mine.
 
 ### Tools and where each was used
 
 | Tool | Used for |
 |---|---|
-| Claude (extended dialogue) | System design: write path, tie-breaking, payout guarantees, read-path caching |
-| Claude Code | ... |
-| Cursor / Copilot | ... |
+| Claude (extended dialogue) | System design forks in §3 — write path, tie-breaking, payout guarantees, read-path caching — argued out with trade-offs before any code |
+| Claude Code | Implementation, test-writing, container-backed verification of Lua/SQL/Mongo, and the live EC2 bring-up. Driven against a fixed rule set (see below) |
+
+Two habits made the AI output reviewable rather than trusted:
+
+- **`CLAUDE.md` invariants.** 21 hard rules (money-as-integers, atomic score+pool,
+  single-transaction payout, statelessness) written up front, so every suggestion was
+  checked against a fixed contract instead of case-by-case judgement.
+- **Executable skills.** Those rules were encoded as Claude Code skills —
+  `check-invariants` (audits a diff against all 21), `new-endpoint` (enforces the
+  validation → service → typed-return layering), `wtf-log` (writes the log below) — so
+  the guard rails ran every session instead of relying on recall.
 
 ### How the architecture was decided
 
-The system design in §3 was produced through an extended back-and-forth rather than a
-single prompt. Each fork — deltas vs. absolute totals, in-app cron vs. external
-scheduler, polling vs. push — was framed with its trade-offs, and the decision was mine.
-The full reasoning behind each choice is recorded in this document, which is the actual
-output of that process.
-
-*(Optional: link the exported transcript. It is strong evidence for "making your own
-thinking visible," which the role explicitly asks for.)*
+§3 was produced through back-and-forth, not a single prompt. Each fork — deltas vs.
+absolute totals, in-app cron vs. external scheduler, polling vs. push, second vs. minute
+score resolution — was framed with its trade-offs and the call was mine; this document is
+the actual output of that process.
 
 ### Where AI output was corrected or rejected
 
-*This is the most important subsection — it demonstrates review rather than acceptance.
-Use real examples from your own work. Examples of the kind of thing worth recording:*
+The log's most important entries are the ones where I *didn't* accept what was proposed:
 
-- An early version of the pool update used `INCRBYFLOAT`. Accepted at first, then
-  rejected: floating-point accumulation drifts over millions of weekly writes. Replaced
-  with integer minor units.
-- A proposed distributed lock was described as guaranteeing exactly-once payout. It does
-  not — TTL expiry can overlap with a still-running job. The real guarantee was moved to
-  a PostgreSQL uniqueness constraint, with the lock demoted to an optimisation.
-- ...
+- **`INCRBYFLOAT` for the pool** — accepted at first, then rejected: float accumulation
+  drifts over millions of weekly writes and the pool stops reconciling. Replaced with
+  integer minor units (`delta * 2`, no division).
+- **A distributed lock described as guaranteeing exactly-once payout** — it does not; TTL
+  expiry can overlap a still-running job. The real guarantee was moved to a PostgreSQL
+  `ON CONFLICT DO NOTHING` uniqueness constraint, the lock demoted to an optimisation.
+- **"EventBridge Scheduler → API destination"** — Scheduler can't target a raw HTTPS
+  endpoint; only an event-bus *Rule* can. Corrected after checking AWS docs, not the model.
+- **A UTC week-key bug that would have shipped** — date-fns reads a Date's *local* fields,
+  so `getISOWeek` on a non-UTC server resolved a Monday-00:00-UTC instant to the wrong
+  week. Caught by a boundary unit test (`2027-01-01 → 2026-W53`) before it mattered.
+- **A framing I had wrong** — I described the startup task as "make Mongo non-blocking";
+  inspection showed Mongo already was, and Redis/Postgres were *not* fail-fast. The actual
+  work was the reverse of the request.
+- Smaller ones the log also records: a zod-v4 API (`z.prettifyError`) called on pinned
+  zod 3.24 (would have thrown on first bad config), and an ioredis import that didn't
+  typecheck under `NodeNext`/`verbatimModuleSyntax`.
 
 ### What was decided without AI
 
-*e.g. the α curve value, the seeding target, the hosting topology, the choice to skip
-push — anything where the constraint was product or budget judgement rather than a
-technical lookup.*
+Product- and budget-driven calls, not technical lookups:
+
+- **α = 1.0** for the rank 4–100 reward curve — a balance between "no cliff after the
+  podium" and "rank 100 still worth fighting for" (§3.5); a design judgement, made config
+  not constant.
+- **Seed 750k, not 10M** — 10M would exhaust the t3.micro's Redis and degrade the very
+  performance being demonstrated; the ceiling is measured and documented instead (§4).
+- **Hosting topology** — Mongo on Atlas M0, not on the box (WiredTiger's ~256MB won't fit
+  alongside Node/Redis/Postgres in 1GB); two Node instances behind nginx to *prove*
+  statelessness, not for capacity.
+- **Skipping push (SSE/WebSocket)** — no complaint was about staleness, and a persistent
+  connection is state on a memory-constrained box; polling that terminates at the edge was
+  the right cost (§3.7).
+- **Minute score resolution** over second — an 8.6B earnings ceiling is too low for an
+  idle-game economy; minute resolution buys ~550B (§3.2).
 
 ### Prompting approach
 
-*Briefly: how context was managed across a long design conversation, how requirements
-were restated to keep the model grounded, when a fresh context was started.*
+Context was kept grounded by writing the rules down once (`CLAUDE.md`) and referring code
+back to numbered README sections rather than re-explaining reasoning each turn. Subtle,
+expensive-when-wrong pieces (Lua scripts, migrations, the Mongo event writer) were not
+trusted from review alone — they were verified by running them against ephemeral
+`redis:7` / `postgres:16` / `mongo:7` Docker containers, and those runs are recorded in
+the log. When a decision was a real fork, it was logged immediately (`wtf-log`) so §5
+could be written from fact, not memory.
 
 ---
 
 ## 6. Running locally
 
+Client and server are separate projects (CLAUDE.md), so each has its own
+`npm install`. Redis and PostgreSQL run from Docker; MongoDB uses an Atlas
+connection string (it is a secondary store — the app starts and serves without
+it, §2).
+
+**1. Infra (Redis + PostgreSQL):**
+
 ```bash
-# ...
+docker compose -f infra/docker-compose.yml up -d
+# Postgres is published on host port 5442 (5432/5433 were taken locally); the
+# DATABASE_URL below must match.
+```
+
+**2. Server:**
+
+```bash
+cd server
+cp .env.example .env          # then fill in real values (see below)
+npm install
+npm run migrate:up            # create players / balances / payouts / snapshots
+NODE_ENV=development npm run seed   # ~750k demo players, power-law earnings
+npm run dev                   # http://localhost:3000
+```
+
+Minimum `.env` for local dev (Redis/Postgres from compose above, a throwaway
+Mongo, and two ≥32-char secrets):
+
+```
+DATABASE_URL=postgres://leaderboard:leaderboard@localhost:5442/leaderboard
+REDIS_URL=redis://localhost:6379
+MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>/leaderboard
+JWT_SECRET=<random 32+ chars>
+INTERNAL_PAYOUT_SECRET=<random 32+ chars>
+```
+
+**3. Client:**
+
+```bash
+cd client
+npm install
+npm run dev                   # http://localhost:5173, /api proxied to :3000
+```
+
+**Auth / the personal window.** Player tokens are minted out-of-band — there is
+no login flow (a deliberate scope decision; §3.1 trade-off note and
+`docs/ai-workflow.md`). In production the game client already holds the player's
+JWT and the leaderboard reuses it. For evaluation, set `DEMO_MODE=true` on the
+server: the client then shows a **"View as"** picker (top-right) that mints a
+token for a seeded account via the demo-only `POST /api/dev/token` and drops it
+into `localStorage`. Pick *Rank ~102* or *Rank ~400k* to see the "outside the
+top 100" personal window (own rank + 3 above / 2 below). `DEMO_MODE` is an auth
+bypass and must stay `false` in a real production build; the client mirror is
+`VITE_DEMO_MODE`.
+
+**Payout / "Last week" screen.** The weekly payout is triggered by EventBridge
+in production (§3.4); locally, `POST /internal/payout` with the
+`x-internal-secret` header runs it once for the just-closed week. After a run
+completes, `GET /api/leaderboard/history/latest` (and the client's "Last week"
+tab) is populated.
+
+**Tests / build / lint** (each project):
+
+```bash
+npm run test && npm run build && npm run lint
 ```
 
 ## 7. What I would do next

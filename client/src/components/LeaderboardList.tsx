@@ -3,8 +3,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useLeaderboard } from '../hooks/useLeaderboard.ts';
 import { usePlayerWindow } from '../hooks/usePlayerWindow.ts';
-import { LEADERBOARD_PAGE_SIZE, PAID_RANK_COUNT } from '../lib/constants.ts';
+import {
+  LEADERBOARD_PAGE_SIZE,
+  PAID_RANK_COUNT,
+  PODIUM_SHARES,
+} from '../lib/constants.ts';
+import { formatEarnings } from '../lib/format.ts';
+import type { LeaderboardEntry } from '../api/types.ts';
 import { LeaderboardRow } from './LeaderboardRow.tsx';
+import { Podium, type PodiumEntry } from './Podium.tsx';
 import { PoolIndicator } from './PoolIndicator.tsx';
 import { WeekCountdown } from './WeekCountdown.tsx';
 
@@ -21,6 +28,7 @@ const OVERSCAN = 8;
  */
 export function LeaderboardList() {
   const parentRef = useRef<HTMLDivElement>(null);
+  const windowRef = useRef<HTMLDivElement>(null);
   const [pageCount, setPageCount] = useState(1);
   const [visiblePages, setVisiblePages] = useState<ReadonlySet<number>>(
     () => new Set([0]),
@@ -82,9 +90,42 @@ export function LeaderboardList() {
     return { ranksToGo: myRank - PAID_RANK_COUNT + 1 };
   }, [myRank]);
 
+  // Top-3 spotlight. Award labels are a *live preview* off the current pool
+  // using the brief's fixed podium %s (PODIUM_SHARES) — not the α-curve, which
+  // the client never computes (lib/constants.ts). `pool` may not have loaded on
+  // the very first render, so the label is omitted until it has.
+  const podiumEntries = useMemo<PodiumEntry[]>(() => {
+    return entries.slice(0, 3).map((entry: LeaderboardEntry, index) => {
+      // `slice(0, 3)` bounds index to 0–2; the `?? 0` only satisfies
+      // noUncheckedIndexedAccess and is never actually reached.
+      const share = PODIUM_SHARES[index] ?? 0;
+      return {
+        rank: entry.rank + 1,
+        displayName: entry.displayName,
+        rawEarnings: entry.rawEarnings,
+        isMe: entry.rank === myRank,
+        awardLabel:
+          pool === undefined
+            ? undefined
+            : formatEarnings(Math.floor(pool * share)),
+      };
+    });
+  }, [entries, pool, myRank]);
+
+  // In the loaded list → scroll the row into view; otherwise (outside the top,
+  // or not yet paged in) the player only appears in the personal window below,
+  // so jump there instead. Both targets always exist when myRank is known.
   const scrollToMe = () => {
-    if (myRank !== null && myRank < entries.length) {
+    if (myRank === null) {
+      return;
+    }
+    if (isMyRankInTop) {
       virtualizer.scrollToIndex(myRank, { align: 'center' });
+    } else {
+      windowRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
     }
   };
 
@@ -111,13 +152,21 @@ export function LeaderboardList() {
           <button
             type="button"
             onClick={scrollToMe}
-            disabled={!isMyRankInTop}
-            className="rounded-lg bg-indigo-500/20 px-4 py-3 text-sm font-medium text-indigo-200 disabled:cursor-not-allowed disabled:opacity-40"
+            title={
+              isMyRankInTop ? 'Scroll to your row' : 'Scroll to your window'
+            }
+            className="rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-4 py-3 text-sm font-medium text-indigo-200 transition-colors hover:bg-indigo-500/30"
           >
             Jump to my rank
           </button>
         )}
       </div>
+
+      {podiumEntries.length > 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 pt-5 pb-4">
+          <Podium entries={podiumEntries} />
+        </div>
+      )}
 
       <div
         ref={parentRef}
@@ -157,13 +206,14 @@ export function LeaderboardList() {
       </div>
 
       {isFetchingNextPage && (
-        <div className="text-center text-xs text-slate-400">
-          Loading more…
-        </div>
+        <div className="text-center text-xs text-slate-400">Loading more…</div>
       )}
 
       {!isMyRankInTop && me.data && me.data.entries.length > 0 && (
-        <div className="rounded-lg border border-indigo-400/30 bg-indigo-500/5">
+        <div
+          ref={windowRef}
+          className="rounded-lg border border-indigo-400/30 bg-indigo-500/5"
+        >
           <div className="flex items-center gap-2 px-4 pt-3 text-xs tracking-wide text-indigo-300 uppercase">
             <span>Your window</span>
             {rewardStatus && (

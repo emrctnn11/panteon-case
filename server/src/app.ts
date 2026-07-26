@@ -7,6 +7,7 @@ import type { Database } from './db/schema.js';
 import { authPlugin } from './http/auth.js';
 import { internalAuthPlugin } from './http/internalAuth.js';
 import type { LeaderboardRedis } from './redis/client.js';
+import { devRoutes } from './routes/dev/index.js';
 import { healthRoutes } from './routes/health.js';
 import { historyRoutes } from './routes/history/index.js';
 import { leaderboardRoutes } from './routes/leaderboard/index.js';
@@ -61,6 +62,12 @@ export async function buildApp(
   await app.register(historyRoutes, {
     db: deps.db,
   });
+
+  // Demo-only: absent entirely unless DEMO_MODE is on (see routes/dev). Keeps
+  // the auth-bypass token minter out of a production build by construction.
+  if (config.DEMO_MODE) {
+    await app.register(devRoutes);
+  }
 
   return app;
 }
