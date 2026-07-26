@@ -67,7 +67,7 @@ viewport (see §3.7).
 
 ### "Rewards should go out automatically at the end of the week."
 
-**Solution:** an AWS EventBridge Scheduler entry fires weekly at `cron(5 0 ? * MON *)`
+**Solution:** a scheduled AWS EventBridge Rule fires weekly at `cron(5 0 ? * MON *)`
 UTC against a secret-protected internal endpoint. Payout is computed from the frozen
 previous week, written to PostgreSQL in a single transaction, and guarded so that it
 can never run twice. Details in §3.
@@ -86,7 +86,7 @@ can never run twice. Details in §3.
                                 │
                         MongoDB Atlas (M0)
 
-  EventBridge Scheduler ──weekly──▶ POST /internal/payout
+  EventBridge Rule ──weekly──▶ POST /internal/payout
 ```
 
 **Stateless by construction.** No session state, no in-memory counters, no scheduler
@@ -217,8 +217,11 @@ boundary and the previous week is frozen by definition. Payout runs at 00:05 UTC
 absorb in-flight requests and clock skew. A good data model removes problems that would
 otherwise need mechanisms.
 
-**Triggering.** AWS EventBridge Scheduler calls a protected internal endpoint, rather
-than `node-cron` inside the application. Scheduling is decoupled from the application
+**Triggering.** A scheduled AWS EventBridge Rule calls a protected internal endpoint, rather
+than `node-cron` inside the application. (A *Rule*, not EventBridge *Scheduler*: Scheduler
+cannot target an API destination — only event-bus Rules can — so a raw HTTPS endpoint on a
+cron is driven by a scheduled Rule. Same behaviour: one weekly UTC cron, retry policy, DLQ.
+See `infra/eventbridge/`.) Scheduling is decoupled from the application
 lifecycle, so it survives deploys and does not fire N times when N instances run. Cost
 at one invocation per week is effectively zero. The endpoint derives the target week
 itself and accepts no week parameter — otherwise anyone reaching that endpoint could

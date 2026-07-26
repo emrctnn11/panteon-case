@@ -3,6 +3,15 @@
 Chronological record of AI-assisted development moments. Feeds README §5.
 Newest entries on top. Dated, factual, 2–3 lines each — no embellishment.
 
+## 2026-07-26 (13)
+Provisioned the EventBridge weekly payout trigger (7.3) and smoke-tested the write path (7.4)
+against the live EC2. Caught that nginx only proxied `/api/` — `POST /internal/payout` fell to
+the SPA static location and returned 405, so EventBridge would have silently dead-lettered every
+week; added an `/internal/` proxy block. Smoke test: first `POST /api/score` moved `pool` 0 →
+2,000,000 and returned a rank; replaying the same total returned `applied:false` (GT, invariant 8).
+Also: the provisioning IAM role needed `iam:CreateServiceLinkedRole` + scoped `secretsmanager:*`
+on `events!connection/*` before `CreateConnection` succeeded — not obvious from the script.
+
 ## 2026-07-26 (12)
 Chose the hook architecture for visible-only polling. Options: keep `useInfiniteQuery` and
 just pin the poll to the first page (small change, but a deep page in view wouldn't stay
