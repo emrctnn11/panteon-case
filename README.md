@@ -3,6 +3,8 @@
 A stateless leaderboard backend + client for an idle/clicker game with ~10M registered
 players and ~2M DAU. Weekly competition, automatic prize pool, automatic payout.
 
+The full, dated record is docs/ai-workflow.md — a running log written as the work happened, not reconstructed afterwards.
+
 - **Live demo:** https://panteoncase.duckdns.org
 - **Stack:** Node.js + TypeScript, PostgreSQL, MongoDB, Redis, React + TypeScript, AWS EC2
 
