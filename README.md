@@ -497,8 +497,9 @@ npm run dev                   # http://localhost:5173, /api proxied to :3000
 ```
 
 **Auth / the personal window.** Player tokens are minted out-of-band — there is
-no login flow (a deliberate scope decision; §3.1 trade-off note and
-`docs/ai-workflow.md`). In production the game client already holds the player's
+no login flow. `players` has no credential column, so building real auth issuance
+was out of scope for this brief; the decision is recorded in `docs/ai-workflow.md`.
+In production the game client already holds the player's
 JWT and the leaderboard reuses it. For evaluation, set `DEMO_MODE=true` on the
 server: the client then shows a **"View as"** picker (top-right) that mints a
 token for a seeded account via the demo-only `POST /api/dev/token` and drops it
@@ -522,6 +523,8 @@ npm run test && npm run build && npm run lint
 ## 7. What I would do next
 
 - Server-side validation of earnings (see §3.1)
+- A real login/token-issuance flow, replacing the `DEMO_MODE` auth bypass (§6) before
+  any production use
 - Regional and friends leaderboards, reusing the same key-rotation model
 - Move Redis to ElastiCache and add read replicas past ~2M weekly-active players
 - Load testing to confirm the extrapolation in §4 empirically
