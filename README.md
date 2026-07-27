@@ -359,12 +359,7 @@ so the reward curve and the dense competition near rank 100 behave realistically
 test accounts are provided at rank ~2, ~50, **~102** (just outside the reward boundary),
 and ~400,000 (to exercise the personal window and deep pagination).
 
-**Deployment note.** MongoDB runs on Atlas M0 rather than on the instance: WiredTiger
-reserves ~256MB minimum, which does not fit alongside Node, Redis and PostgreSQL in 1GB.
-Mongo is also the least latency-sensitive component here — an append-only event log off
-the hot path — making it the natural candidate to move. Events are written in batches to
-stay within M0's shared-tier limits. This is a hosting decision, not a stack deviation:
-the component is MongoDB, addressed through the same driver and protocol.
+**Deployment note.** The production architecture places MongoDB on Atlas M0, not on the instance: WiredTiger reserves ~256MB, which doesn't fit alongside Node, Redis and PostgreSQL in 1GB. In this demo, given the short-lived evaluation load, Mongo runs as a container on the same box with a 2GB swap file absorbing the pressure; the move to Atlas is a connection-string change, made painless by the non-blocking Mongo connection (§2/invariant 21). Mongo is the least latency-sensitive component — an append-only event log off the hot path — so it is both the natural candidate to externalise and safe to co-locate for a demo.
 
 ---
 

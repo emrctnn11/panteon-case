@@ -3,6 +3,14 @@
 Chronological record of AI-assisted development moments. Feeds README §5.
 Newest entries on top. Dated, factual, 2–3 lines each — no embellishment.
 
+## 2026-07-27 (18)
+Debugging "no settled last week" on the EC2 demo: the real EventBridge cron run for
+2026-W30 had hit a Postgres FK violation on `payouts.player_id` (stale Redis week data
+from a pre-reseed run, orphaned once `players` was reseeded) and left `payout_runs`
+stuck in `claimed` — blocking every retry with `already_run`, no recovery but a manual
+`DELETE`. Proposed patching the stuck-claim recovery path; user declined — this is a
+test case, not worth the engineering time. Left as-is, recorded as a known gap.
+
 ## 2026-07-26 (17)
 Manual "View as" testing surfaced two UX bugs. (1) Switching player didn't update the
 personal window until the 15s poll — root cause: `usePlayerWindow`'s query key was
